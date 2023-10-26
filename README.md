@@ -1,4 +1,6 @@
+# TOC:
 <!--toc:start-->
+- [TOC:](#toc)
 - [Notes taken through my journey of learning to write an OS in Rust](#notes-taken-through-my-journey-of-learning-to-write-an-os-in-rust)
   - [References](#references)
     - [RISC-V](#risc-v)
@@ -32,10 +34,12 @@
           - [特权级切换的起因](#特权级切换的起因)
           - [Trap管理](#trap管理)
     - [Day 5](#day-5)
-      - [Chapter 3 CoopOS](#chapter-3-coopos)
+      - [Chapter 3 三叠纪CoopOS](#chapter-3-三叠纪coopos)
         - [多道程序与分时多任务](#多道程序与分时多任务)
           - [多道程序放置 锯齿螈OS](#多道程序放置-锯齿螈os)
           - [任务切换 始初龙OS](#任务切换-始初龙os)
+          - [多道程序与协作式调度](#多道程序与协作式调度)
+          - [分时多任务系统与抢占式调度 腔骨龙OS](#分时多任务系统与抢占式调度-腔骨龙os)
 <!--toc:end-->
 
 # Notes taken through my journey of learning to write an OS in Rust
@@ -67,6 +71,7 @@
 
 #### Cheetsheet
 - [RISC-V Linux syscall table](https://jborza.com/post/2021-05-11-riscv-linux-syscalls)
+- [RISC-V SBI specification](https://lkml.iu.edu/hypermail/linux/kernel/2201.1/02422/RISC-V_SBI_specifcation.pdf)
 
 
 ### utils
@@ -107,14 +112,17 @@ Successfully setup the developing environment following the guidelines [here](ht
           应用程序
             ||
             || 函数调用
+            ||
             \/
           标准库
             ||
             || 系统调用
+            ||
             \/
         内核/操作系统
             ||
-            || 指令集
+            ||  指令集
+            ||
             \/
           硬件平台
       ```
@@ -335,7 +343,8 @@ Found this article on the Internet, which described RISC-V Instruction Set so we
 
 ##### 函数调用与栈
 
-- Function Call Context\
+- Function Call Context
+
 <img src="./pic/function-call.png" width="500">
 
 - [JAL and JALR explain(和rCore的JALR不同，暂时按照greencard，或许只是两种写法，但意义相同)](https://fraserinnovations.com/risc-v/risc-v-instruction-set-explanation/#:~:text=question%3A%20why%20does%20the%20pc%20add%204%3F)
@@ -350,15 +359,15 @@ For example: jal x1, 80000040:
 - rs1 = x1, expand imm to x1 is exists
 - Then the program jumps back to rs1
 
-> rs => Source Register (可在x0~x31通用寄存器选取), imm => Immediate, rd => Destination Register (可在x0~x31通用寄存器选取)
+> rs => Source Register (可在x0-x31通用寄存器选取), imm => Immediate, rd => Destination Register (可在x0-x31通用寄存器选取)
 
 - 调用规范(Calling Convention)
 
     - Stack Frame
 
-        - ra 寄存器保存其返回之后的跳转地址，是一个被调用者保存寄存器；
-        - 父亲栈帧的结束地址 fp ，是一个被调用者保存寄存器；
-        - 其他被调用者保存寄存器 s1 ~ s11 ；
+        - ra => Return address  callee saved
+        - 父栈帧的结束地址 fp   callee saved
+        - s1 ~ s11              callee saved
         - 函数所使用到的局部变量。
         <img src="./pic/StackFrame.png" width="500">
 
@@ -403,12 +412,12 @@ In the perspective of privileged architecture
 
 - Exception
 
-RISC-V 异常一览表 - https://rcore-os.cn/rCore-Tutorial-Book-v3/chapter2/1rv-privilege.html#id6
+RISC-V Exceptions - https://rcore-os.cn/rCore-Tutorial-Book-v3/chapter2/1rv-privilege.html#id6
 
-- 陷入/trap类指令，通过上层软件中执行一条特定指令触发
+- Trap/trap instructions, caused by specific calls
 
-- Breakpoint
-- Environment call
+    - Breakpoint
+    - Environment call
 
 结果：陷入异常控制流
 
@@ -434,59 +443,16 @@ fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize;
 /// syscall ID：93
 fn sys_exit(exit_code: usize) -> !;
 ```
-- RISC-V 寄存器编号和别名
+- RISC-V Register-ABI Names-Descriptions
 
-<img src="./pic/registers.jpg" width="500">
+<img src="./pic/register-usage.png.jpg" width="500">
 
-- RISC-V 寄存器编号从 0-31 ，表示为 x0-x31 。 其中：
-
-x10-x17 : 对应 a0-a7\
-x1 ：对应 ra == Return Address
-
-> ecall 指令的输入/输出寄存器一一对应如果完全由我们自己编写汇编代码，那么如何将变量绑定到寄存器则成了一个难题
-
-<img src="./pic/bind-args-to-regs.png" width="500">
+> Bind args to regs
 
 ```rust
-// NOTE: console子模块 write_str
-// user/src/console.rs
-const STDOUT: usize = 1;
-impl Write for Stdout {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        write(STDOUT, s.as_bytes());
-        Ok(())
-    }
-}
-         /\
-         ||
-         ||
-         ||
-// NOTE: 系统调用在用户库 user_lib 中进一步封装
-// user/src/lib.rs
-pub fn write(fd: usize, buf: &[u8]) -> isize { sys_write(fd, buf) }
-pub fn exit(exit_code: i32) -> isize { sys_exit(exit_code) }
-         /\
-         ||
-         ||
-         ||
-// NOTE: sys_write & sys_exit
-// user/src/syscall.rs
-const SYSCALL_WRITE: usize = 64;
-const SYSCALL_EXIT: usize = 93;
-pub fn sys_write(fd: usize, buffer: &[u8]) -> isize {
-    syscall(SYSCALL_WRITE, [fd, buffer.as_ptr() as usize, buffer.len()])
-}
-pub fn sys_exit(xstate: i32) -> isize {
-    syscall(SYSCALL_EXIT, [xstate as usize, 0, 0])
-}
-         /\
-         ||
-         ||
-         ||
 // NOTE: syscall
 // user/src/syscall.rs
 use core::arch::asm;
-// 这些输入输出变量和 ecall 指令的输入/输出寄存器一一对应
 // user/src/syscall.rs
 // - Rust Inline ASM: https://rust-lang.github.io/rfcs/2873-inline-asm.html
 fn syscall(id: usize, args: [usize; 3]) -> isize {
@@ -546,24 +512,7 @@ impl<T> UPSafeCell<T> {
 ```rust
 // lazy_static => Initialize AppManager at runtime(依赖于运行期间才能得到的数据)
 lazy_static! {
-    static ref APP_MANAGER: UPSafeCell<AppManager> = unsafe {
-        UPSafeCell::new({
-            extern "C" {
-                fn _num_app();
-            }
-            let num_app_ptr = _num_app as usize as *const usize;
-            let num_app = num_app_ptr.read_volatile();
-            let mut app_start: [usize; MAX_APP_NUM + 1] = [0; MAX_APP_NUM + 1];
-            let app_start_raw: &[usize] =
-                core::slice::from_raw_parts(num_app_ptr.add(1), num_app + 1);
-            app_start[..=num_app].copy_from_slice(app_start_raw);
-            AppManager {
-                num_app,
-                current_app: 0,
-                app_start,
-            }
-        })
-    };
+    ...
 }
 ```
 
@@ -574,20 +523,7 @@ lazy_static! {
 
 ```rust
 unsafe fn load_app(&self, app_id: usize) {
-    if app_id >= self.num_app {
-        panic!("All applications completed!");
-    }
-    info!("[kernel] Loading app_{}", app_id);
-    // clear icache
-    core::arch::asm!("fence.i"); // 清理 i-cache
-    // clear app area
-    core::slice::from_raw_parts_mut(APP_BASE_ADDRESS as *mut u8, APP_SIZE_LIMIT).fill(0);
-    let app_src = core::slice::from_raw_parts(
-        self.app_start[app_id] as *const u8,
-        self.app_start[app_id + 1] - self.app_start[app_id],
-    );
-    let app_dst = core::slice::from_raw_parts_mut(APP_BASE_ADDRESS as *mut u8, app_src.len());
-    app_dst.copy_from_slice(app_src);
+    ...
 }
 ```
 
@@ -596,14 +532,10 @@ unsafe fn load_app(&self, app_id: usize) {
 > Trap 前的特权级不会高于 Trap 后的特权级
 
 ###### 特权级切换的起因
-
-    当启动应用程序的时候，需要初始化应用程序的用户态上下文，并能切换到用户态执行应用程序；
-
-    当应用程序发起系统调用（即发出 Trap）之后，需要到批处理操作系统中进行处理；
-
-    当应用程序执行出错的时候，OS kill app & run_next_app
-
-    当应用程序执行结束的时候，需要到批处理操作系统中加载运行下一个应用（实际上也是通过系统调用 sys_exit 来实现的）。
+当启动应用程序的时候，需要初始化应用程序的用户态上下文，并能切换到用户态执行应用程序；
+当应用程序发起系统调用（即发出 Trap）之后，需要到批处理操作系统中进行处理；
+执行出错，OS kill app & run_next_app
+执行结束，run_next_app
 
 - 控制状态寄存器 (CSR, Control and Status Register) => 辅助 Trap 处理
 
@@ -631,7 +563,8 @@ impl UserStack {
 
 > 换栈：sp 寄存器的值修改为 get_sp 的返回值
 
-- TrapContext
+- Trap Context
+
 包含所有通用寄存器x0-x31，另有sstatus和sepc
 
 ```rust
@@ -697,7 +630,7 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
 
 ### Day 5
 
-#### Chapter 3 CoopOS
+#### Chapter 3 三叠纪CoopOS
 
 > CoopOS => Load every app at once
 
@@ -715,3 +648,132 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
 3. ***config*** Module => All the constants
 
 ###### 任务切换 始初龙OS
+
+- Task Context
+
+```rust
+// os/src/task/context.rs
+pub struct TaskContext {
+    ra: usize,
+    sp: usize,
+    s: [usize; 12],
+}
+```
+[__switch(current_task_cx_ptr,  next_task_cx_ptr)](https://rcore-os.cn/rCore-Tutorial-Book-v3/chapter3/2task-switching.html#:~:text=%E4%B8%8B%E9%9D%A2%E6%88%91%E4%BB%AC%E7%BB%99%E5%87%BA-,__switch,-%E7%9A%84%E5%AE%9E%E7%8E%B0%EF%BC%9A)
+
+    - .rept => repeat
+    - sd sp, 8(a0) => store Doubleword, sp at the address of a0+8
+    - sd ra. 0(a0) => store Doubleword, ra with a0(current_task_cx_ptr)
+    - ld ra, 0(a1) => load Doubleword, ra with a1(next_task_cx_ptr)
+
+###### 多道程序与协作式调度
+
+<img src="./pic/multiprogramming.png" width="500">
+
+- Task Status
+
+    - UnInit
+    - Ready
+    - Running
+    - Exited
+
+- Task Control Block
+    
+```rust
+// os/src/task/task.rs
+#[derive(Copy, Clone)]
+pub struct TaskControlBlock {
+    pub task_status: TaskStatus,
+    pub task_cx: TaskContext,
+}
+```
+
+- TaskManager & TaskManagerInner
+
+```rust
+// os/src/task/mod.rs
+
+pub struct TaskManager {
+    num_app: usize,
+    inner: UPSafeCell<TaskManagerInner>,
+}
+
+struct TaskManagerInner {
+    tasks: [TaskControlBlock; MAX_APP_NUM],
+    current_task: usize,
+}
+```
+
+- Task-related Syscalls (**sys_yield**, sys_exit)
+
+> yield apps that for example need IO, which can't be finished at once
+
+- os/src/syscall/process.rs 
+    - sys_yield() now has to suspend_current_and_run_next()
+    - sys_exit(exit_code) now has to exit_current_and_run_next()
+
+- TaskManager-related functions
+
+    - Status-related(os/src/task/mod.rs)
+        - impl TaskManager { mark_current_suspended(&self) }
+        - impl TaskManager { mark_current_exited(&self) }
+    - next_task_?()
+        - impl TaskManager { run_next_task() }
+            - drop(inner) before __switch
+        - impl TaskManager { find_next_task() -> Option<usize> }
+            - find **first** task after current_task that is at the status of **Ready** 
+
+    - __restore apps that enter U mode for the **first time** do not have TaskContext with them, we need to init for them
+        - init_app_cx(app_id: usize) -> usize
+            - Init **TrapContext** for tasks[i], and **push** the TrapContext to **KERNEL_STACK**
+        - impl TaskContext { goto_restore(kstack_ptr: usize) -> Self }
+        - iterate through **tasks**, adjust their states to **ready**
+
+    - impl TaskManager { run_first_task() }
+        - _unused TaskContext, to prevent coverting other data
+
+###### 分时多任务系统与抢占式调度 腔骨龙OS
+
+- Using RR(Round-Robin) algorithm to handle cooperaions between tasks
+
+- RISC-V Interrupt(It's **Async** compare to Trap)
+
+| Interrupt    | Exception    | Description    |
+|---------------- | --------------- | --------------- |
+| 1   | 1   | Supervisor Software Interrupt    |
+| 1   | 3   | Machine Software Interrupt       |
+| 1   | 5   | Supervisor Timer Interrupt       |
+| 1   | 7   | Machine Timer Interrupt          |
+| 1   | 9   | Supervisor External Interrupt    |
+| 1   | 11  | Machine External Interrupt       |
+
+Software Interrupt => Software
+Timer Interrupt => Timer
+External Interrupt => External
+
+- Interruption handle
+
+sstatus(CSR reg).sie {
+    ssie
+    stie
+    seie
+}
+
+```rust
+if (sie == 1 && CPU Mode Not higher than S) && (ssie == 1 || stie ==1 || seie == 1)
+    Handle the interruption {
+        // To prevent nested Trap loops
+        sstatus.spie = sstatus.sie;
+        sstatus.sie = 0;
+    }
+    After interruption was handled {
+        sret to where it's interrupted
+        sstatus.sie = sstatus.spie;
+}
+else 
+    Block the interruption
+```
+
+- Timer interrupt & RISC-V M Mode 64bit CSR mtime & mtimecmp
+
+    - Once mtime > mtimecmp => Timer interrupt
