@@ -49,11 +49,18 @@
 - [rCore-Tutorial-Book-v3](https://rcore-os.cn/rCore-Tutorial-Book-v3/chapter0/index.html)
 
 - 2023 A
-    - [rCore 2023(Autumn) overview 更新较慢](https://github.com/LearningOS/rust-based-os-comp2023)
+    - [rCore 2023(Autumn) overview](https://github.com/LearningOS/rust-based-os-comp2023)
     - [rCore-Tutorial-Guide 2023(Autumn)](https://learningos.cn/rCore-Tutorial-Guide-2023A)
     - [第一阶段线上课](https://os2edu.cn/course/123)
     - [第二阶段rCore Classroom链接](https://classroom.github.com/a/QCd3t3jG)
         - [我的作业](https://github.com/LearningOS/2023a-rcore-ye-junzhe)
+            1. update rustsbi-qemu.bin
+            2. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git user
+            3. Comment out "env:"(rustup something something) in makefile, both in os/ and ci-user/, otherwise it'll destroy your Rust env
+            4. git clone https://github.com/LearningOS/rCore-Tutorial-Checker-2023A.git ci-user
+            5. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git ci-user/user
+            6. Add reports at root dir
+            7. cd ci-user && make test CHAPTER=$ID
     - [第二阶段基于Rust语言的rCore Tutorial排行榜](https://os2edu.cn/2023-autumn-os-ranking)
 
 - ~2023 S~
@@ -709,7 +716,7 @@ struct TaskManagerInner {
 > yield apps that for example need IO, which can't be finished at once
 
 - os/src/syscall/process.rs 
-    - sys_yield() now has to suspend_current_and_run_next()
+    - sys_yield (syscall ID: 124) now has to suspend_current_and_run_next()
     - sys_exit(exit_code) now has to exit_current_and_run_next()
 
 - TaskManager-related functions
@@ -747,9 +754,9 @@ struct TaskManagerInner {
 | 1   | 9   | Supervisor External Interrupt    |
 | 1   | 11  | Machine External Interrupt       |
 
-Software Interrupt => Software
-Timer Interrupt => Timer
-External Interrupt => External
+Software Interrupt => Triggered by Software
+Timer Interrupt => Triggered by Timer
+External Interrupt => Triggered by External
 
 - Interruption handle
 
@@ -776,4 +783,22 @@ else
 
 - Timer interrupt & RISC-V M Mode 64bit CSR mtime & mtimecmp
 
+    - os/src/timer.rs
     - Once mtime > mtimecmp => Timer interrupt
+        - SBI_SET_TIMER = 0 (According to SBI specification)
+        - CLOCK_FREQ (How many clock **cycles** in 1 second, vary from platforms)
+        - TICKS_PER_SEC = 100 **(100/1000s == 10ms)**
+        - **Clock increment value** = **get_time() + CLOCK_FREQ / TICKS_PER_SEC**
+            - == Every 10ms
+        - Trigger timer interrupt at every **Clock increment value**
+        - struct TimeVal (syscall ID: 169)
+            - holding sec & usec
+
+- Preemptive multitasking
+
+    - rust_main(os/src/main.rs)
+    To prevent S Mode Timer interrupt from being blocked
+        - trap::enable_timer_interrupt()
+        - timter::set_next_trigger
+
+    - user/src/bin/03sleep.rs
