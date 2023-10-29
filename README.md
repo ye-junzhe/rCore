@@ -55,12 +55,13 @@
     - [第二阶段rCore Classroom链接](https://classroom.github.com/a/QCd3t3jG)
         - [我的作业](https://github.com/LearningOS/2023a-rcore-ye-junzhe)
             1. update rustsbi-qemu.bin
-            2. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git user
-            3. Comment out "env:"(rustup something something) in makefile, both in os/ and ci-user/, otherwise it'll destroy your Rust env
+            2. os/src/sbi.rs SBI_SHUTDOWN const SBI_SHUTDOWN: usize = 0x53525354;
+            3. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git user
             4. git clone https://github.com/LearningOS/rCore-Tutorial-Checker-2023A.git ci-user
-            5. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git ci-user/user
-            6. Add reports at root dir
-            7. cd ci-user && make test CHAPTER=$ID
+            5. Comment out "env:"(rustup something something) in makefile, both in os/ and ci-user/, otherwise it'll destroy your Rust env
+            6. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git ci-user/user
+            7. Add reports at root dir
+            8. cd ci-user && make test CHAPTER=$ID
     - [第二阶段基于Rust语言的rCore Tutorial排行榜](https://os2edu.cn/2023-autumn-os-ranking)
 
 - ~2023 S~
@@ -546,7 +547,7 @@ unsafe fn load_app(&self, app_id: usize) {
 
 - 控制状态寄存器 (CSR, Control and Status Register) => 辅助 Trap 处理
 
-- RISC-V-Reader-Chinese P108
+- RISC-V-Reader-Chinese P106
 ⚫ 发生**例外的指令的PC被存入sepc，且PC被设置为stvec**。
 ⚫ scause按图10.3根据异常类型设置，**stval被设置成出错的地址**或者其它特定异常的信息字。
 ⚫ 把sstatusCSR中的SIE置零，屏蔽中断，且SIE之前的值被保存在SPIE中。
@@ -799,6 +800,159 @@ else
     - rust_main(os/src/main.rs)
     To prevent S Mode Timer interrupt from being blocked
         - trap::enable_timer_interrupt()
-        - timter::set_next_trigger
+        - timer::set_next_trigger
 
     - user/src/bin/03sleep.rs
+
+### Day 6
+
+#### Chapter 4 头甲龙AddressSpaceOS
+
+##### 地址空间
+
+- Page <=> Frame
+
+1. App =>
+2. Virtual Page Number =>
+3. PageTable, find corresponding FrameNumber + offset =>
+4. Physical Page Number + offset =>
+5. Physical Memory
+
+<img src="./pic/page-table.png" width="500">
+
+##### SV39多级页表的硬件机制
+
+- RISC-V-Reader-Chinese P108
+
+    - SV39 分页硬件机制由RISC-V 64 架构提供
+
+    - satp(Supervisor Address Translation and Protection，监管者地址转换和保护)
+    Inactivated by default, a CSR called **satp** needs to be modified to activate SV39
+        - Mode 开启分页并选择页表级数
+            - 0 Physical adress
+            - 8 activate SV39
+        - ASID(Address Space Identifier， 地址空间标识符)域是可选的，它可以用来降低上下文切换的开销
+        - PPN 字段保存根页表的物理地址，它以 4 KiB 的页面大小为单位
+
+- 页表项的数据结构抽象与类型定义
+
+    - PTE(Page Table Entry)Flags
+
+        - V(Valid)：仅当位 V 为 1 时，页表项才是合法的；
+        - R(Read)/W(Write)/X(eXecute)：分别控制索引到这个页表项的对应虚拟页面是否允许读/写/执行；
+        - U(User)：控制索引到这个页表项的对应虚拟页面是否在 CPU 处于 U 特权级的情况下是否被允许访问；
+        - G：暂且不理会；
+        - A(Accessed)：处理器记录自从页表项上的这一位被清零之后，页表项的对应虚拟页面是否被访问过；
+        - D(Dirty)：处理器记录自从页表项上的这一位被清零之后，页表项的对应虚拟页面是否被修改过。
+
+- 多级页表(Multi-Level Page-Table) 
+
+字典树
+
+- SV39 地址转换过程
+
+    - 三级页表
+        26-18 一级页索引
+        17-9  二级页索引
+        8-0   三级页索引
+        另12位 Offset
+
+        - each PageTable is 8 bytes, which is 512*8 = 4096 = 4KiB
+
+- 快表(TLB, Translation Lookaside Buffer)
+sfence.vma会通知处理器，软件可能已经修改了页表，于是处理器可以相应地刷新转换缓存。
+两个可选的参数，这样可以缩小缓存刷新的范围。一个位于rs1，它指示了页表哪个虚址对应的转换被修改了;
+另一个位于 rs2，它给出了被修改页表的进程的地址空间标识符(ASID)。如果两者都是x0，便会刷新整个转换缓存。
+
+##### 管理SV39多级页表
+
+- 物理页帧管理
+
+    - Range of ppn => from `current` to `end`
+    - recycled => 回收(alloc)过的物理页号
+    - dealloc => not in recycled, must in range of ppn
+
+    - RAII style:
+        - frame_alloc -> FrameTracker(tracks the ppn)
+        - impl Drop for FrameTracker:
+            frame_dealloc
+
+- 多级页表管理
+
+    - PageTable
+        - root_ppn: PhysPageNum,
+        - frames: Vec<FrameTracker>
+    - Accessed specific PPN
+        - get_pte_array -> PageTableEntry
+        - get_bytes_array -> [u8]
+        - get_mut<T> -> T
+        ```rust
+        ...
+        (pa(Physical address).0 as *mut T).as_mut().unwrap();
+        ...
+        ```
+
+- 建立和拆除虚实地址映射关系
+
+    - impl indexes() -> [usize; 3] for **VirtPageNum**
+    - impl for PageTable
+        - find_pte_create() -> PTE 
+            - iterate through Multi-Level Page-Table
+                - if pte not valid => frame_alloc & PTEFlags::V
+        - find_pte() -> PTE
+            - if pte not valid => return None
+        - map
+            vpn => pte => ppn + flags
+        - unmap
+            vpn => pte => make empty
+        - Locate specific page
+            - from_token(satp(Providing the physical address of the root)) -> PageTable
+            - translate(vpn) -> PTE
+
+##### 内核与应用的地址空间
+
+- 实现地址空间抽象
+
+    - MapArea逻辑段
+        - vpn_range: VPNRange,
+        - data_frames: BTreeMap<VirtPageNum, FrameTracker>,
+        - map_type: MapType,
+            - **Identical**
+            - **Framed**
+        - map_perm: MapPermission,
+            - R/W/X/U
+    - impl for MapArea
+        - new()
+        - map_one() => PageTable.map vpn to ppn
+        - unmap_one() => PageTable.map vpn
+        - map() => Call nm
+        - unmap() => Call map_one() for a range of vpns
+        - copy_data()
+    
+    - MemorySet地址空间
+        - page_table: PageTable
+        - areas: Vec<MapArea>
+    - impl for MemorySet
+        - new_bare() -> Self
+        - push() { area.push(MapArea) }
+        - inert_frame_area(start_va, end_va, permission)
+            push MapArea that inserted to a certain address
+
+- 内核地址空间
+
+    - impl for MemorySet
+        - new_kernel() -> Self => Create kernel address space, and wrap it inside a Arc<UPSafeCell<T>>
+        - from_elf() -> Self
+
+##### 基于地址空间的分时多任务
+
+- KERNEL_SPACE
+
+    - PageTable::token -> satp CSR
+    - sfence.vma => Clear TLB
+
+- 跳板
+需要保存内核地址的token来写入satp
+需要保存应用的内核栈栈顶的位置来保存Trap上下文
+然而只有一个sscratch
+所以只能把Trap上下文保存在应用地址空间次高页的一个虚拟页面
