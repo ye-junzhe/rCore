@@ -1,4 +1,7 @@
+0x53525354
 # TOC:
+
+
 <!--toc:start-->
 - [TOC:](#toc)
 - [Notes taken through my journey of learning to write an OS in Rust](#notes-taken-through-my-journey-of-learning-to-write-an-os-in-rust)
@@ -40,6 +43,17 @@
           - [任务切换 始初龙OS](#任务切换-始初龙os)
           - [多道程序与协作式调度](#多道程序与协作式调度)
           - [分时多任务系统与抢占式调度 腔骨龙OS](#分时多任务系统与抢占式调度-腔骨龙os)
+    - [Day 6](#day-6)
+      - [Chapter 4 头甲龙AddressSpaceOS](#chapter-4-头甲龙addressspaceos)
+        - [地址空间](#地址空间)
+        - [SV39多级页表的硬件机制](#sv39多级页表的硬件机制)
+        - [管理SV39多级页表](#管理sv39多级页表)
+        - [内核与应用的地址空间](#内核与应用的地址空间)
+        - [基于地址空间的分时多任务](#基于地址空间的分时多任务)
+    - [Day 7](#day-7)
+      - [Chapter 5 伤齿龙ProcessOS](#chapter-5-伤齿龙processos)
+        - [与进程有关的重要系统调用](#与进程有关的重要系统调用)
+        - [进程管理的核心数据结构](#进程管理的核心数据结构)
 <!--toc:end-->
 
 # Notes taken through my journey of learning to write an OS in Rust
@@ -47,21 +61,24 @@
 ## References
 
 - [rCore-Tutorial-Book-v3](https://rcore-os.cn/rCore-Tutorial-Book-v3/chapter0/index.html)
+- [rCore Blog](https://rcore-os.cn/blog/archives/)
 
 - 2023 A
     - [rCore 2023(Autumn) overview](https://github.com/LearningOS/rust-based-os-comp2023)
     - [rCore-Tutorial-Guide 2023(Autumn)](https://learningos.cn/rCore-Tutorial-Guide-2023A)
-    - [第一阶段线上课](https://os2edu.cn/course/123)
+    - [线上课](https://os2edu.cn/course/123)
     - [第二阶段rCore Classroom链接](https://classroom.github.com/a/QCd3t3jG)
         - [我的作业](https://github.com/LearningOS/2023a-rcore-ye-junzhe)
-            1. update rustsbi-qemu.bin
-            2. os/src/sbi.rs SBI_SHUTDOWN const SBI_SHUTDOWN: usize = 0x53525354;
+            - 在做Lab之前：
+            1. update rustsbi-qemu.bin **(If using qemu8.0)**
+            2. os/src/sbi.rs SBI_SHUTDOWN const SBI_SHUTDOWN: usize = 0x53525354; **(If using qemu8.0)**
             3. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git user
             4. git clone https://github.com/LearningOS/rCore-Tutorial-Checker-2023A.git ci-user
             5. Comment out "env:"(rustup something something) in makefile, both in os/ and ci-user/, otherwise it'll destroy your Rust env
             6. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git ci-user/user
             7. Add reports at root dir
             8. cd ci-user && make test CHAPTER=$ID
+            9. os/src/sbi.rs SBI_SHUTDOWN const SBI_SHUTDOWN: usize = 8;
     - [第二阶段基于Rust语言的rCore Tutorial排行榜](https://os2edu.cn/2023-autumn-os-ranking)
 
 - ~2023 S~
@@ -956,3 +973,21 @@ sfence.vma会通知处理器，软件可能已经修改了页表，于是处理�
 需要保存应用的内核栈栈顶的位置来保存Trap上下文
 然而只有一个sscratch
 所以只能把Trap上下文保存在应用地址空间次高页的一个虚拟页面
+
+### Day 7
+
+#### Chapter 5 伤齿龙ProcessOS
+
+##### 与进程有关的重要系统调用
+
+- 重要系统调用
+    - sys_fork() => ID: 220
+    - sys_exec(path: &str) => ID: 221
+    - sys_waitpid(pid: isize. exit_code: *mut i32) => ID: 260
+        - pid -1 => Wait for any subprocess
+
+- 应用程序示例
+    - initproc
+    - user_shell
+
+#####  进程管理的核心数据结构
