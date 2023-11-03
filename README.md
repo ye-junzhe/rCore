@@ -17,7 +17,7 @@
       - [chapter 0](#chapter-0)
         - [Environment setup](#environment-setup)
     - [Day 3](#day-3)
-      - [Chapter 1 三叶虫LibOS](#chapter-1-三叶虫libos)
+      - [Chapter 1 LibOS](#chapter-1-libos)
         - [应用程序执行环境](#应用程序执行环境)
         - [移除标准库依赖](#移除标准库依赖)
         - [内核第一条指令](#内核第一条指令)
@@ -28,7 +28,7 @@
         - [函数调用与栈](#函数调用与栈)
       - [基于SBI服务完成输出和关机](#基于sbi服务完成输出和关机)
     - [Day 4](#day-4)
-      - [Chapter 2 邓式鱼BatchOS](#chapter-2-邓式鱼batchos)
+      - [Chapter 2 BatchOS](#chapter-2-batchos)
         - [特权级机制](#特权级机制)
           - [RISC-V 特权级架构](#risc-v-特权级架构)
         - [实现应用程序](#实现应用程序)
@@ -37,21 +37,21 @@
           - [特权级切换的起因](#特权级切换的起因)
           - [Trap管理](#trap管理)
     - [Day 5](#day-5)
-      - [Chapter 3 三叠纪CoopOS](#chapter-3-三叠纪coopos)
+      - [Chapter 3 CoopOS](#chapter-3-coopos)
         - [多道程序与分时多任务](#多道程序与分时多任务)
-          - [多道程序放置 锯齿螈OS](#多道程序放置-锯齿螈os)
-          - [任务切换 始初龙OS](#任务切换-始初龙os)
+          - [多道程序放置](#多道程序放置)
+          - [任务切换](#任务切换)
           - [多道程序与协作式调度](#多道程序与协作式调度)
-          - [分时多任务系统与抢占式调度 腔骨龙OS](#分时多任务系统与抢占式调度-腔骨龙os)
+          - [分时多任务系统与抢占式调度](#分时多任务系统与抢占式调度)
     - [Day 6](#day-6)
-      - [Chapter 4 头甲龙AddressSpaceOS](#chapter-4-头甲龙addressspaceos)
+      - [Chapter 4 AddressSpaceOS](#chapter-4-addressspaceos)
         - [地址空间](#地址空间)
         - [SV39多级页表的硬件机制](#sv39多级页表的硬件机制)
         - [管理SV39多级页表](#管理sv39多级页表)
         - [内核与应用的地址空间](#内核与应用的地址空间)
         - [基于地址空间的分时多任务](#基于地址空间的分时多任务)
     - [Day 7](#day-7)
-      - [Chapter 5 伤齿龙ProcessOS](#chapter-5-伤齿龙processos)
+      - [Chapter 5 ProcessOS](#chapter-5-processos)
         - [与进程有关的重要系统调用](#与进程有关的重要系统调用)
         - [进程管理的核心数据结构](#进程管理的核心数据结构)
 <!--toc:end-->
@@ -74,12 +74,13 @@
             2. os/src/sbi.rs SBI_SHUTDOWN const SBI_SHUTDOWN: usize = 0x53525354; **(If using qemu8.0)**
             3. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git user
             4. git clone https://github.com/LearningOS/rCore-Tutorial-Checker-2023A.git ci-user
-            5. Comment out "env:"(rustup something something) in makefile, both in os/ and ci-user/, otherwise it'll destroy your Rust env
+            5. Comment out "env:"(rustup something something) in makefile, both in os/ and ci-user/, otherwise it'll reinstall your Rust env
             6. git clone https://github.com/LearningOS/rCore-Tutorial-Test-2023A.git ci-user/user
             7. Add reports at root dir
             8. cd ci-user && make test CHAPTER=$ID
             9. os/src/sbi.rs SBI_SHUTDOWN const SBI_SHUTDOWN: usize = 8;
     - [第二阶段基于Rust语言的rCore Tutorial排行榜](https://os2edu.cn/2023-autumn-os-ranking)
+    - [晋级第三阶段需要填写的Blog](https://github.com/rcore-os/blog)
 
 - ~2023 S~
     - ~[rCore 2023(Spring) overview](https://github.com/LearningOS/rCore-Tutorial-Code-2023S)~
@@ -129,7 +130,7 @@ Successfully setup the developing environment following the guidelines [here](ht
 
 ### Day 3
 
-#### Chapter 1 三叶虫LibOS
+#### Chapter 1 LibOS
 
 ##### 应用程序执行环境
 
@@ -415,7 +416,7 @@ For example: jal x1, 80000040:
 
 ### Day 4
 
-#### Chapter 2 邓式鱼BatchOS
+#### Chapter 2 BatchOS
 
 > BatchOS => Load one app to APP_BASE_ADDR
 
@@ -655,13 +656,13 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
 
 ### Day 5
 
-#### Chapter 3 三叠纪CoopOS
+#### Chapter 3 CoopOS
 
 > CoopOS => Load every app at once
 
 ##### 多道程序与分时多任务
 
-###### 多道程序放置 锯齿螈OS
+###### 多道程序放置
 
 ***loader*** Module => Process Control
 ***task***   Module => Process Execute & Switch
@@ -672,7 +673,7 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
 - fn get_base_i => get base address of app i
 3. ***config*** Module => All the constants
 
-###### 任务切换 始初龙OS
+###### 任务切换
 
 - Task Context
 
@@ -757,7 +758,7 @@ struct TaskManagerInner {
     - impl TaskManager { run_first_task() }
         - _unused TaskContext, to prevent coverting other data
 
-###### 分时多任务系统与抢占式调度 腔骨龙OS
+###### 分时多任务系统与抢占式调度
 
 - Using RR(Round-Robin) algorithm to handle cooperaions between tasks
 
@@ -823,7 +824,7 @@ else
 
 ### Day 6
 
-#### Chapter 4 头甲龙AddressSpaceOS
+#### Chapter 4 AddressSpaceOS
 
 ##### 地址空间
 
@@ -976,7 +977,7 @@ sfence.vma会通知处理器，软件可能已经修改了页表，于是处理�
 
 ### Day 7
 
-#### Chapter 5 伤齿龙ProcessOS
+#### Chapter 5 ProcessOS
 
 ##### 与进程有关的重要系统调用
 
