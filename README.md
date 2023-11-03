@@ -471,7 +471,7 @@ fn sys_exit(exit_code: usize) -> !;
 ```
 - RISC-V Register-ABI Names-Descriptions
 
-<img src="./pic/register-usage.png.jpg" width="500">
+<img src="./pic/register-usage.png" width="500">
 
 > Bind args to regs
 
